@@ -2,56 +2,52 @@
 #include <crypt.h>
 #include <string.h>
 #include <stdlib.h>
-#include <pthread.h>
-#include <chrono>
-#include <ctime>
+#include <time.h>
 
 const char alphabet[64] = {'.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
                            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
                            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
                            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
                            'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'};
-
-
 long long int n;
 
 
-char *pwdes;
-char found_pw[9] = "";
-int found = 0;
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-struct chunk_info {
-    long long int start;
-    long long int size;
-};
-
-void* worker (void *input) {
+int main(int argc, char *argv[]) {
     
-    // struct to get args
-	struct chunk_info *ci;
-    ci = (chunk_info *) input;
-    
-    long long int i = 0;
-    
-	// used in reentrant crypt func
-    struct crypt_data cryptdata;
-    cryptdata.initialized = 0;
-        
-    // calc starting password (reverse linear address to string)
-	char test[] = "........";
-    
-    for (int j = 7; j >= 0; j--) {
-        test[j] = alphabet[ci->start % 64];
-        ci->start = ci->start / 64;    
+    if (argc < 3) {
+        printf("Usage: %s <password> <trials * 10^6>\n", argv[0]);
+        return 1;
     }
-     
-    char *testdes = (char *) malloc(14);
-    strncpy(testdes, crypt_r(test, "00", &cryptdata),13);
     
+	// Number of keys
+    if (atoi(argv[2]) == 0) {
+        n = 281474976710656; // 64^8 or 2^48
+    } else {
+        n = atoi(argv[2]) * 1000000;
+    }
+    
+    struct timespec t1, t2;
+    double time_span;
+    
+	// get start time
+    clock_gettime(CLOCK_REALTIME, &t1);
+    
+    char salt[] = "00";
+    char *pwdes = (char *) malloc (14);
+    char *testdes = (char *) malloc(14);
+        
+    long long int i = 0;
+	
+	// initial password
+    char test[] = "........";
     int index[8] = {0};
     
-    while ((i < ci->size) && (strcmp(pwdes, testdes) != 0) && (! found)) {
+    strncpy(pwdes, crypt(argv[1], salt), 13);
+    strncpy(testdes, crypt(test, salt),13);
+    
+	// test until number of trials is reached or pw is found
+    while ((i < n) && (strcmp(pwdes, testdes) != 0)) {
         index[7]++;
         if (index[7] == 64) {
             index[7] = 0;
@@ -104,79 +100,16 @@ void* worker (void *input) {
         }
         
         i++;
-        strncpy(testdes, crypt(test, "00"),13);
+        strncpy(testdes, crypt(test, salt),13);
     }
     
-	// if pw is found, mutex is used to access shared variables
-    if (strcmp(pwdes, testdes) == 0) {
-        pthread_mutex_lock(&lock);
-        found = 1;
-        strcpy(found_pw, test);
-        pthread_mutex_unlock(&lock);
-        pthread_exit(NULL);
-    }
-    return NULL;
-}
-
-int main(int argc, char* argv[]) {
-    
-    if (argc < 3) {
-        printf("Usage: %s <password> <trials * 10^6> <threads>\n", argv[0]);
-        return 1;
-    }
-    
-    struct timespec t1, t2;
-    double time_span;
-    
-	// get start time
-    clock_gettime(CLOCK_REALTIME, &t1);
-    
-    pwdes = (char *) malloc (14);
-    strncpy(pwdes, crypt(argv[1], "00"), 13);
-    
-	// number of keys
-    if (atoi(argv[2]) == 0) {
-        n = 281474976710656; // 64^8 or 2^48
-    } else {
-        n = atoi(argv[2]) * 1000000;
-    }
-    
-	// number of threads to use
-    int n_threads = atoi(argv[3]);
-    int thread_idx = n_threads - 1;
-    
-    pthread_t tid[n_threads];
-    struct chunk_info ci[n_threads];
-    
-	// number of keys per thread
-    long long int size = n/n_threads;
-    
-    for (int i = 0; i < thread_idx; i++) {
-        ci[i].start = size * i;
-        ci[i].size = size;
-        pthread_create(&tid[i], NULL, worker, (void *) &ci[i]);
-    }
-    
-	// if n_threads is odd, we catch remainder
-    ci[thread_idx].start = size * (thread_idx);
-    ci[thread_idx].size = n - ci[thread_idx].start;
-    
-    pthread_create(&tid[thread_idx], NULL, worker, (void *) &ci[thread_idx]);
-    
-	// join all threads
-    for (int i = 0; i < n_threads; i++) {
-        pthread_join(tid[i], NULL);
-    }
-    
-	// get stop time
+	// get stop time and calc time_span
     clock_gettime(CLOCK_REALTIME, &t2);
     time_span = (t2.tv_sec - t1.tv_sec) + (double)((t2.tv_nsec - t1.tv_nsec))/1000000000;
     
-    if (found) {
-        printf("Found pw: %s in %lf secs\n", found_pw, time_span);
+    if (strcmp(pwdes, testdes) == 0) {
+        printf("Found password %s in %lf secs\n", test, time_span);
     } else {
         printf("Not found, tested %llu in %lf secs\n", n, time_span);
     }
-    return 0;
 }
-
