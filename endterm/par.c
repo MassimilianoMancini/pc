@@ -52,6 +52,7 @@ void* worker (void *input) {
     int index[8] = {0};
     
     while ((i < ci->size) && (strcmp(pwdes, testdes) != 0) && (! found)) {
+        printf("%s\n", test);
         index[7]++;
         if (index[7] == 64) {
             index[7] = 0;
@@ -115,12 +116,13 @@ void* worker (void *input) {
         pthread_mutex_unlock(&lock);
         pthread_exit(NULL);
     }
+    
     return NULL;
 }
 
 int main(int argc, char* argv[]) {
     
-    if (argc < 3) {
+    if (argc < 4) {
         printf("Usage: %s <password> <trials * 10^6> <threads>\n", argv[0]);
         return 1;
     }
@@ -177,6 +179,7 @@ int main(int argc, char* argv[]) {
     } else {
         printf("Not found, tested %llu in %lf secs\n", n, time_span);
     }
+    free(pwdes);
     return 0;
 }
 
